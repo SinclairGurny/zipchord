@@ -28,26 +28,15 @@ The dictionary group shows the currently loaded chord dictionary and the number 
 
 Notes:
 * See [below](#chord-dictionary) for more details about the chord dictionary file and advanced features.
-* When you add chords by selecting text and pressing and holding Ctrl-C, the new chord is added automatically, and you do not need to open the menu to edit or reload the dictionary.  
+* When you add chords by selecting text and pressing and holding Ctrl-C, the new chord is added automatically, and you do not need to open the menu to edit or reload the dictionary.
 
 ### Sensitivity
 
-This group allows you to adjust the sensitivity of the chord recognition and add a delay to the output of the chords. 
+This group allows you to adjust the sensitivity of the chord recognition and add a delay to the output of the chords.
 
 **Input delay:** Depending on your regular typing, you might be holding two or more keys pressed at the same time for longer than the threshold that triggers the chord recognition. This can result in some intended key presses in your regular typing being deleted or misinterpreted as chords. In that case, you can increase the number of milliseconds under Input delay.
 
 **Output delay:** In some situations, the window you are typing in might be outputting the chords with some distortions (where keystrokes are replaced incorrectly). In that case, you can try setting the Output delay to 50ms, which can solve the issue.
-
-### Chord Behavior
-
-The Chord Behavior group allows you to change how spaces and punctuation are handled around chords.
-
-**Smart punctuation** offers three options:
-* Off: Spaces and capitalization are never adjusted around punctuation.
-* For chords only: Spaces are added and words are capitalized only when punctuation precedes or follows chorded entry.
-* For all input: Spaces are always added after punctuation and words are capitalized even for regular typing.
-
-**Delete mistyped chords:** This option allows you to automatically remove unrecognized chords. If you are encountering situations where your intended key presses are being deleted, either do not use this option or increase the number of milliseconds under Input delay.
 
 ### Enabling and Disabling the Chords
 

@@ -5,34 +5,27 @@ SetWorkingDir %A_ScriptDir%
 ; Licensed under GPL-3.0
 ; See https://github.com/psoukie/zipchord/
 
-; Recognize these keys
 global keys := "',-./0123456789;=[\]abcdefghijklmnopqrstuvwxyz"
-; Chord file
+global cursory := "Del|Ins|Home|End|PgUp|PgDn|Up|Down|Left|Right|LButton|RButton|BS|Tab"
 global chfile := ""
-; List of chords
 global chords := {}
-; Threshold to recognize chords
 global chdelay := 0
-; Delay before outputting
 global outdelay := 0
-; Temporary variables
 global newdelay := 0
 global newoutdelay := 0
-; Filename of chord file
+global mode := 2
 global UIdict := "none"
-; Number of chords
 global UIentries := "0"
-; Is zipchord enabled?
 global UIon := 1
-; ...
+global delnonchords := 0
 global start := 0
+global UImode
 chord := ""
-
-; Start Program
+lastentry := 0 ; -1 - entry was interrupted (moved to another place); 0 - last entry was not a chord; 1 - last entry was a chord; 2 - last entry was a space
+uppercase := false
 Initialize()
 Return
 
-; Holding C-c triggers menu
 ~^+c::
   Sleep 300
   if GetKeyState("c","P")
@@ -40,39 +33,46 @@ Return
   Return
 
 Initialize() {
-  ; Basic setup
   Gui, Font, s10, Segoe UI
   Gui, Margin, 15, 15
-  ; Dictionary Setup
   Gui, Add, GroupBox, w320 h130 Section, Dictionary
   Gui, Add, Text, xp+20 yp+30 w280 vUIdict Left, [file name]
   Gui, Add, Text, xp+10 Y+10 w280 vUIentries Left, (999 chords)
   Gui, Add, Button, gSelectDict Y+10 w80, &Open
   Gui, Add, Button, gEditDict xp+100 yp+0 w80, &Edit
   Gui, Add, Button, gReloadDict xp+100 yp+0 w80, &Reload
-  ; Sensitivity
+
   Gui, Add, GroupBox, xs ys+150 w320 h100 Section, Sensitivity
   Gui, Add, Text, xp+20 yp+30, I&nput delay (ms):
   Gui, Add, Edit, vnewdelay Right xp+150 yp+0 w40, 99
   Gui, Add, Text, xp-150 Y+10, O&utput delay (ms):
   Gui, Add, Edit, vnewoutdelay Right xp+150 yp+0 w40, 99
-  ; Disable zipchord
+
+  Gui, Add, GroupBox, xs ys+120 w320 h100 Section, Chord behavior
+  Gui, Add, Text, xp+20 yp+30, Smart &punctuation:
+  Gui, Add, DropDownList, vUImode Choose%mode% AltSubmit Right xp+150 yp+0 w130, Off|For chords only|For all input
+  Gui, Add, Checkbox, vdelnonchords xp-150 Y+10 Checked%delnonchords%, &Delete mistyped chords
+
   Gui, Add, Checkbox, gUIControlStatus vUIon xs Y+40 Checked%UIon%, Re&cognition enabled
   Gui, Add, Button, Default w80 xs+220, OK
   Gui, Font, Underline cBlue
   Gui, Add, Text, xs Y+10 gWebsiteLink, v1.6.0 (updates)
-  ; Adjust menu options from taskbar
+
   Menu, Tray, Add, Open Settings, ShowMenu
   Menu, Tray, Default, Open Settings
   Menu, Tray, Tip, ZipChord
   Menu, Tray, Click, 1
-  ; Read registry values
+
   RegRead chdelay, HKEY_CURRENT_USER\Software\ZipChord, ChordDelay
   if ErrorLevel
     SetDelay(90)
   RegRead outdelay, HKEY_CURRENT_USER\Software\ZipChord, OutDelay
   if ErrorLevel
     SetOutDelay(0)
+  RegRead delnonchords, HKEY_CURRENT_USER\Software\ZipChord, DelUnknown
+  RegRead mode, HKEY_CURRENT_USER\Software\ZipChord, Punctuation
+  if ErrorLevel
+    mode := 2
   RegRead chfile, HKEY_CURRENT_USER\Software\ZipChord, ChordFile
   if (ErrorLevel || !FileExist(chfile)) {
     errmsg := ErrorLevel ? "" : Format("The last used dictionary {} could not be found.`n`n", chfile)
@@ -102,6 +102,11 @@ Initialize() {
   }
   Hotkey, % "~Space", KeyDown
   Hotkey, % "~Space Up", KeyUp
+  Loop Parse, cursory, |
+  {
+    Hotkey, % "~" A_LoopField, Interrupt
+    Hotkey, % "~^" A_LoopField, Interrupt
+  }
   ShowMenu()
 }
 
@@ -112,7 +117,9 @@ return
 ShowMenu() {
   GuiControl Text, newdelay, %chdelay%
   GuiControl Text, newoutdelay, %outdelay%
+  GuiControl , Choose, UImode, %mode%
   GuiControl , , UIon, % (start==-1) ? 0 : 1
+  GuiControl , , delnonchords, %delnonchords%
   Gui, Show,, ZipChord
   UIControlStatus()
 }
@@ -121,10 +128,15 @@ UIControlStatus() {
   GuiControlGet, checked,, UIon
   GuiControl, Enable%checked%, newdelay
   GuiControl, Enable%checked%, newoutdelay
+  GuiControl, Enable%checked%, UImode
+  GuiControl, Enable%checked%, delnonchords
 }
 
 ButtonOK:
   Gui, Submit, NoHide
+  mode := UImode
+  RegWrite REG_SZ, HKEY_CURRENT_USER\Software\ZipChord, Punctuation, %mode%
+  RegWrite REG_SZ, HKEY_CURRENT_USER\Software\ZipChord, DelUnknown, %delnonchords%
   if SetDelay(newdelay) {
     start := UIon ? 0 : -1
     CloseMenu()
@@ -156,6 +168,10 @@ KeyDown:
     Return
   if (StrLen(chord)==2)
     start:= A_TickCount
+  if (mode==3 && uppercase==2 && Asc(key)>96 && Asc(key)<123) {
+    SendInput {Backspace}+%key%
+    uppercase := 1
+  }
   Return
 
 KeyUp:
@@ -168,11 +184,15 @@ KeyUp:
   start := 0
   if (st && StrLen(ch)>1 && A_TickCount - st > chdelay) {
     chord := ""
+    last := lastentry
+    upper := uppercase
     sorted := Arrange(ch)
     Sleep outdelay
     if (chords.HasKey(sorted)) {
       Loop % StrLen(sorted)
         SendInput {Backspace}
+      if (last==0)
+        SendInput {Space}
       exp := chords[sorted]
       if (SubStr(exp, StrLen(exp), 1) == "~") {
         exp := SubStr(exp, 1, StrLen(exp)-1)
@@ -180,7 +200,16 @@ KeyUp:
       }
       else
         pref := false
+      if (upper && mode>1)
+        SendInput % RegExReplace(exp,"(^.)", "$U1")
+      else
         SendInput % exp
+      lastentry := 1
+      if (!pref) {
+        SendInput {Space}
+        lastentry := 2
+      }
+      uppercase := 0
     }
     else {
       if (delnonchords) {
@@ -189,12 +218,63 @@ KeyUp:
       }
     }
   }
+  else
+    if (ch!="") {
+      last2 := lastentry
+      upper2 := uppercase
+      lastentry := 0
+      uppercase := 0
+      if (key==" ") {
+        lastentry := 2
+        if (upper2)
+          uppercase := upper2
+      }
+      if (InStr(".,;", key)) {
+        if (last2>0 && mode>1)
+          SendInput {Backspace}{Backspace}%key%
+        if ( (last2>0 && mode>1) || mode==3 ) {
+          SendInput {Space}
+          lastentry := 2
+        }
+      }
+      if (key==".")
+        uppercase := 2
+  }
   Return
 
 ShiftKeys:
   key := SubStr(A_ThisHotkey, 3, 1)
+  last2 := lastentry
   if (start==-1)
     Return
+  if (InStr("1/;", key)) {
+    uppercase := 2
+    lastentry := 0
+    if (last2>0 && mode>1)
+      SendInput {Backspace}{Backspace}+%key%
+    if ( (last2>0 && mode>1) || mode==3 ) {
+      SendInput {Space}
+      lastentry := 2
+    }
+  }
+  else {
+    lastentry := 0
+    uppercase := 0
+  }
+  Return
+
+~Enter::
+  lastentry := -1
+  uppercase := true
+  Return
+
+~Shift::
+  uppercase := true
+  Return
+
+Interrupt:
+  lastentry := -1
+  uppercase := false
   Return
 
 ~^c::
@@ -246,7 +326,6 @@ RegisterChord(newch, newword, w := false) {
   if (SubStr(newword, -10)=="{Backspace}")
     newword := SubStr(newword, 1, StrLen(newword)-11) "~"
   chords.Insert(newch, newword)
-  chords.Insert(" " newch, newword " ")
   return true
 }
 
